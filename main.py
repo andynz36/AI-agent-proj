@@ -391,23 +391,39 @@ if menu == "🏠 종합 대시보드":
         # Setup Korean font for Matplotlib
         import matplotlib.font_manager as fm
         from pathlib import Path
+        import os
+        
+        font_debug_info = ""
         try:
             # Workspace font file path (ideal for Streamlit Cloud deployment)
-            font_path = Path(__file__).parent / "app" / "fonts" / "NanumGothic-Regular.ttf"
+            font_paths = [
+                Path("app/fonts/NanumGothic-Regular.ttf"),
+                Path(__file__).parent / "app" / "fonts" / "NanumGothic-Regular.ttf" if "__file__" in globals() or "__file__" in locals() else None,
+                Path(os.getcwd()) / "app" / "fonts" / "NanumGothic-Regular.ttf",
+                Path("C:/Windows/Fonts/malgun.ttf")
+            ]
             
-            # If workspace font doesn't exist, fallback to Windows default font
-            if not font_path.exists():
-                font_path = Path("C:/Windows/Fonts/malgun.ttf")
-                
-            if font_path.exists():
-                # Add font to matplotlib font manager
+            font_path = None
+            for p in font_paths:
+                if p and p.exists():
+                    font_path = p
+                    break
+            
+            font_debug_info = f"Resolved font path: {font_path}"
+            
+            if font_path:
                 fm.fontManager.addfont(str(font_path))
                 font_name = fm.FontProperties(fname=str(font_path)).get_name()
                 plt.rcParams['font.family'] = font_name
+                font_debug_info += f" | Loaded font name: {font_name}"
+            else:
+                font_debug_info += " | No font path found"
             
             plt.rcParams['axes.unicode_minus'] = False
-        except Exception:
-            pass
+        except Exception as e:
+            font_debug_info = f"Font configuration error: {str(e)}"
+            
+        st.sidebar.caption(font_debug_info)
 
         # Drawing matplotlib dark premium chart
         fig, ax = plt.subplots(figsize=(8, 4.2))
