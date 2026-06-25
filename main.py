@@ -545,6 +545,14 @@ elif menu == "🔍 실시간 점포 찾기 & 비교":
         if "search_query" not in st.session_state:
             st.session_state.search_query = ""
 
+        def reset_brand_search():
+            st.session_state.search_query = ""
+            st.session_state.search_results = None
+            st.session_state.search_sources = None
+            st.session_state.searching = False
+            if "brand_search_input" in st.session_state:
+                st.session_state.brand_search_input = ""
+
         st.markdown("<div class='section-title'>공정거래위원회 등록 정보공개서 실시간 조회 및 비교</div>", unsafe_allow_html=True)
         
         # Optional search settings panel
@@ -586,13 +594,7 @@ elif menu == "🔍 실시간 점포 찾기 & 비교":
             with col_b1:
                 search_clicked = st.button("조회하기", disabled=st.session_state.searching, key="brand_search_btn")
             with col_b2:
-                reset_clicked = st.button("초기화", disabled=st.session_state.searching, key="brand_reset_btn")
-            
-        if reset_clicked:
-            st.session_state.search_query = ""
-            st.session_state.search_results = None
-            st.session_state.search_sources = None
-            st.rerun()
+                st.button("초기화", disabled=st.session_state.searching, key="brand_reset_btn", on_click=reset_brand_search)
 
         if search_clicked and search_q:
             st.session_state.searching = True
