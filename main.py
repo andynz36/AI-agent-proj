@@ -390,10 +390,21 @@ if menu == "🏠 종합 대시보드":
     with col_chart:
         # Setup Korean font for Matplotlib
         import matplotlib.font_manager as fm
+        from pathlib import Path
         try:
-            font_path = "C:/Windows/Fonts/malgun.ttf"
-            font_name = fm.FontProperties(fname=font_path).get_name()
-            plt.rc('font', family=font_name)
+            # Workspace font file path (ideal for Streamlit Cloud deployment)
+            font_path = Path(__file__).parent / "app" / "fonts" / "NanumGothic-Regular.ttf"
+            
+            # If workspace font doesn't exist, fallback to Windows default font
+            if not font_path.exists():
+                font_path = Path("C:/Windows/Fonts/malgun.ttf")
+                
+            if font_path.exists():
+                # Add font to matplotlib font manager
+                fm.fontManager.addfont(str(font_path))
+                font_name = fm.FontProperties(fname=str(font_path)).get_name()
+                plt.rcParams['font.family'] = font_name
+            
             plt.rcParams['axes.unicode_minus'] = False
         except Exception:
             pass
