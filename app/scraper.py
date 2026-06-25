@@ -70,6 +70,19 @@ FRANCHISE_DB = {
         "royalty": "매출의 2.5%",
         "aliases": ["paris", "파리바게트", "빠바", "파리"]
     },
+    "뚜레쥬르": {
+        "brand_name": "뚜레쥬르 (Tous Les Jours)",
+        "category": "식음료 (제과제빵)",
+        "membership_fee": 13200000,
+        "deposit": 10000000,
+        "interior_cost": 110000000,
+        "other_cost": 60000000,
+        "total_initial": 193200000,
+        "avg_annual_sales": 560000000,
+        "store_count": 1300,
+        "royalty": "매출의 2.5%",
+        "aliases": ["tous", "tous les jours", "뚜레", "뚜레주르"]
+    },
     "공차": {
         "brand_name": "공차 (Gong Cha)",
         "category": "식음료 (음료전문점)",
@@ -207,22 +220,7 @@ def search_franchise(query, api_key=None, api_provider="duckduckgo"):
     
     query_clean = query.strip()
     
-    # 1. 메인 5대 브랜드 로컬 매칭 확인 (성능 및 정확성 우선)
-    for key, val in FRANCHISE_DB.items():
-        aliases = val.get("aliases", [])
-        if (query_clean.lower() in key.lower() or 
-            query_clean.lower() in val["brand_name"].lower() or 
-            any(query_clean.lower() in alias.lower() for alias in aliases)):
-            sources = [
-                {
-                    "title": f"공정거래위원회 가맹사업거래 공식 정보 - {val['brand_name']}",
-                    "href": "https://franchise.ftc.go.kr",
-                    "body": f"{val['brand_name']} 브랜드는 {val['category']} 업종으로 등록된 프랜차이즈입니다. 현재 기준 가맹점 수 {val['store_count']:,}개, 가맹점 평균 연매출 {val['avg_annual_sales']:,}원입니다."
-                }
-            ]
-            return [val], sources
-
-    # 2. 외부 브랜드를 위한 실시간 웹 검색 (크롤링 및 API 호출)
+    # 1. 외부 브랜드를 위한 실시간 웹 검색 (크롤링 및 API 호출) - 항상 검색을 먼저 수행합니다.
     search_results = []
     search_q = f"{query_clean} 프랜차이즈 정보공개서 가맹점수 연매출 창업비용"
     
@@ -281,88 +279,167 @@ def search_franchise(query, api_key=None, api_provider="duckduckgo"):
     # 3. 수집된 텍스트 데이터로부터 정량/정성 정보 추출 (Regex & Heuristics)
     all_text = " ".join([item["title"] + " " + item["body"] for item in search_results])
     
-    # 가맹점 수 추출 (예: 123개, 1,234개, 가맹점수 500개)
-    store_count = 80 # Default fallback
-    store_matches = re.findall(r'(?:가맹점\s*수|점포\s*수|매장\s*수)?\s*(\d{1,3}(?:,\d{3})*)\s*개', all_text)
-    if store_matches:
-        for m in store_matches:
-            num = int(m.replace(",", ""))
-            if 5 < num < 40000:
-                store_count = num
+    # 가맹점 수 추출 (예: 123개, 1,234개, 가맹점수 500개, 1300여개 점포)
+    parsed_store_count = None
+    store_patterns = [
+        r'(?:가맹점\s*수|점포\s*수|매장\s*수|가맹점|점포|매장)\s*(?::|은|는)?\s*(\d{1,3}(?:,\d{3})*)\s*(?:개|곳|점)',
+        r'(\d{1,3}(?:,\d{3})*)\s*(?:여)?개\s*(?:점포|매장|가맹점)',
+        r'(?:가맹점\s*수|점포\s*수|매장\s*수)\s*(?::|은|는)?\s*(\d{1,3}(?:,\d{3})*)'
+    ]
+    for pattern in store_patterns:
+        matches = re.findall(pattern, all_text)
+        if matches:
+            for m in matches:
+                val = m[0] if isinstance(m, tuple) else m
+                num = int(val.replace(",", ""))
+                if 5 < num < 50000:
+                    parsed_store_count = num
+                    break
+            if parsed_store_count is not None:
                 break
                 
-    # 평균 연매출액 추출 (예: 3억 5,000만원, 240,000천원, 평균 연매출 450,000,000원)
-    avg_annual_sales = 280000000 # Default fallback (2.8억원)
-    sales_matches_eok = re.findall(r'(\d+(?:\.\d+)?)\s*억', all_text)
-    if sales_matches_eok:
-        avg_annual_sales = int(float(sales_matches_eok[0]) * 100000000)
-    else:
-        sales_matches_man = re.findall(r'(\d{1,3}(?:,\d{3})*)\s*만원', all_text)
-        if sales_matches_man:
-            avg_annual_sales = int(sales_matches_man[0].replace(",", "")) * 10000
-            
-    # 업종 카테고리 자동 유추
-    category = "식음료 (기타 외식업)"
-    if any(w in query_clean for w in ["커피", "카페", "다방", "커스텀", "빽", "투썸", "이디야", "하삼동", "컴포즈", "메가", "공차", "차", "티", "버블티"]):
-        category = "식음료 (커피/음료전문점)"
-    elif any(w in query_clean for w in ["치킨", "닭", "bhc", "비비큐", "굽네", "네네", "처갓집", "교촌"]):
-        category = "식음료 (치킨전문점)"
-    elif any(w in query_clean for w in ["편의점", "마트", "24", "세븐", "gs", "cu"]):
-        category = "판매/서비스 (편의점)"
-    elif any(w in query_clean for w in ["빵", "베이커리", "케익", "파리", "뚜레"]):
-        category = "식음료 (제과제빵)"
-    elif any(w in query_clean for w in ["피자", "도미노", "미스터", "피자나라"]):
-        category = "식음료 (피자전문점)"
-    elif any(w in query_clean for w in ["떡볶이", "엽기", "신전", "분식"]):
-        category = "식음료 (분식전문점)"
-    elif any(w in query_clean for w in ["스터디", "독서실", "카페"]):
-        category = "판매/서비스 (스터디카페)"
-
-    # 업종 카테고리에 따른 창업 비용 기본 템플릿 세팅
-    if "커피" in category or "음료" in category:
-        membership_fee = 7500000
-        deposit = 3000000
-        interior_cost = 45000000
-        other_cost = 25000000
-        royalty = "매출의 3%" if "공차" in query_clean else "월 150,000원 ~ 200,000원 고정"
-    elif "치킨" in category:
-        membership_fee = 8500000
-        deposit = 5000000
-        interior_cost = 55000000
-        other_cost = 35000000
-        royalty = "매출액의 1% - 3%"
-    elif "편의점" in category:
-        membership_fee = 5000000
-        deposit = 10000000
-        interior_cost = 38000000
-        other_cost = 22000000
-        royalty = "월 정액회비 또는 분배형"
-    elif "분식" in category:
-        membership_fee = 8000000
-        deposit = 3000000
-        interior_cost = 40000000
-        other_cost = 20000000
-        royalty = "매출의 2% 고정"
-    else:
-        membership_fee = 10000000
-        deposit = 5000000
-        interior_cost = 65000000
-        other_cost = 30000000
-        royalty = "매출의 2.5%"
-
-    # 텍스트 스니펫 내에서 구체적인 수치(가맹비, 인테리어비) 재탐색 반영
-    membership_matches = re.findall(r'가맹비\s*(\d{1,3}(?:,\d{3})*)\s*만', all_text)
-    if membership_matches:
-        membership_fee = int(membership_matches[0].replace(",", "")) * 10000
-        
-    interior_matches = re.findall(r'인테리어\s*비(?:용)?\s*(\d{1,3}(?:,\d{3})*)\s*만', all_text)
-    if interior_matches:
-        interior_cost = int(interior_matches[0].replace(",", "")) * 10000
-        
-    total_initial = membership_fee + deposit + interior_cost + other_cost
+    # 평균 연매출액 추출 (예: 5억 6,000만원, 5억6천, 240,000천원, 560,000,000원)
+    parsed_avg_annual_sales = None
     
+    # 1. 억/만/천 단위 복합 분석
+    sales_complex = re.findall(r'(\d+)\s*억\s*(?:(\d+)\s*천)?\s*(?:(\d+)\s*만)?', all_text)
+    if sales_complex:
+        eok_part, cheon_part, man_part = sales_complex[0]
+        total_sales = int(eok_part) * 100000000
+        if cheon_part:
+            total_sales += int(cheon_part) * 10000000
+        if man_part:
+            val_man = int(man_part)
+            if val_man < 10000:
+                total_sales += val_man * 10000
+        parsed_avg_annual_sales = total_sales
+        
+    # 2. 천원 단위 분석 폴백
+    if parsed_avg_annual_sales is None:
+        sales_cheon = re.findall(r'(\d{1,3}(?:,\d{3})*)\s*천\s*원', all_text)
+        if sales_cheon:
+            parsed_avg_annual_sales = int(sales_cheon[0].replace(",", "")) * 1000
+            
+    # 3. 만원 단위 분석 폴백
+    if parsed_avg_annual_sales is None:
+        sales_man = re.findall(r'(\d{1,3}(?:,\d{3})*)\s*만\s*원?', all_text)
+        if sales_man:
+            parsed_avg_annual_sales = int(sales_man[0].replace(",", "")) * 10000
+            
+    # 4. 순수 원 단위 분석 폴백 (최소 1천만원 이상 조건)
+    if parsed_avg_annual_sales is None:
+        sales_raw = re.findall(r'(?:평균\s*매출|연\s*매출|매출액|매출)?\s*(?::|은|는)?\s*(\d{1,3}(?:,\d{3})*(?:,\d{3})*)\s*원', all_text)
+        if sales_raw:
+            for val in sales_raw:
+                num = int(val.replace(",", ""))
+                if num > 10000000:
+                    parsed_avg_annual_sales = num
+                    break
+
+    # Local DB matching for high-quality baseline override
+    matched_db = None
+    for key, val in FRANCHISE_DB.items():
+        aliases = val.get("aliases", [])
+        if (query_clean.lower() in key.lower() or 
+            query_clean.lower() in val["brand_name"].lower() or 
+            any(query_clean.lower() in alias.lower() for alias in aliases)):
+            matched_db = val
+            break
+
+    if matched_db:
+        # Use high-quality local DB values as base
+        brand_name = matched_db["brand_name"]
+        category = matched_db["category"]
+        membership_fee = matched_db["membership_fee"]
+        deposit = matched_db["deposit"]
+        interior_cost = matched_db["interior_cost"]
+        other_cost = matched_db["other_cost"]
+        royalty = matched_db["royalty"]
+        store_count = parsed_store_count if parsed_store_count is not None else matched_db["store_count"]
+        avg_annual_sales = parsed_avg_annual_sales if parsed_avg_annual_sales is not None else matched_db["avg_annual_sales"]
+        total_initial = matched_db["total_initial"]
+    else:
+        # Standard parsing for non-db brands
+        brand_name = f"{query_clean} (실시간 검색 결과)"
+        store_count = parsed_store_count if parsed_store_count is not None else 80
+        avg_annual_sales = parsed_avg_annual_sales if parsed_avg_annual_sales is not None else 280000000
+        
+        # 업종 카테고리 자동 유추
+        category = "식음료 (기타 외식업)"
+        if any(w in query_clean for w in ["커피", "카페", "다방", "커스텀", "빽", "투썸", "이디야", "하삼동", "컴포즈", "메가", "공차", "차", "티", "버블티"]):
+            category = "식음료 (커피/음료전문점)"
+        elif any(w in query_clean for w in ["치킨", "닭", "bhc", "비비큐", "굽네", "네네", "처갓집", "교촌"]):
+            category = "식음료 (치킨전문점)"
+        elif any(w in query_clean for w in ["편의점", "마트", "24", "세븐", "gs", "cu"]):
+            category = "판매/서비스 (편의점)"
+        elif any(w in query_clean for w in ["빵", "베이커리", "케익", "파리", "뚜레"]):
+            category = "식음료 (제과제빵)"
+        elif any(w in query_clean for w in ["피자", "도미노", "미스터", "피자나라"]):
+            category = "식음료 (피자전문점)"
+        elif any(w in query_clean for w in ["떡볶이", "엽기", "신전", "분식"]):
+            category = "식음료 (분식전문점)"
+        elif any(w in query_clean for w in ["스터디", "독서실", "카페"]):
+            category = "판매/서비스 (스터디카페)"
+
+        # 업종 카테고리에 따른 창업 비용 기본 템플릿 세팅
+        if "커피" in category or "음료" in category:
+            membership_fee = 7500000
+            deposit = 3000000
+            interior_cost = 45000000
+            other_cost = 25000000
+            royalty = "매출의 3%" if "공차" in query_clean else "월 150,000원 ~ 200,000원 고정"
+        elif "치킨" in category:
+            membership_fee = 8500000
+            deposit = 5000000
+            interior_cost = 55000000
+            other_cost = 35000000
+            royalty = "매출액의 1% - 3%"
+        elif "편의점" in category:
+            membership_fee = 5000000
+            deposit = 10000000
+            interior_cost = 38000000
+            other_cost = 22000000
+            royalty = "월 정액회비 또는 분배형"
+        elif "분식" in category:
+            membership_fee = 8000000
+            deposit = 3000000
+            interior_cost = 40000000
+            other_cost = 20000000
+            royalty = "매출의 2% 고정"
+        elif "제과제빵" in category:
+            membership_fee = 15000000
+            deposit = 15000000
+            interior_cost = 110000000
+            other_cost = 70000000
+            royalty = "매출의 2.5%"
+        else:
+            membership_fee = 10000000
+            deposit = 5000000
+            interior_cost = 65000000
+            other_cost = 30000000
+            royalty = "매출의 2.5%"
+
+        # 텍스트 스니펫 내에서 구체적인 수치(가맹비, 인테리어비) 재탐색 반영
+        membership_matches = re.findall(r'가맹비\s*(\d{1,3}(?:,\d{3})*)\s*만', all_text)
+        if membership_matches:
+            membership_fee = int(membership_matches[0].replace(",", "")) * 10000
+        else:
+            mem_raw = re.findall(r'가맹비\s*(?::|은|는)?\s*(\d{1,3}(?:,\d{3})*)\s*원', all_text)
+            if mem_raw:
+                membership_fee = int(mem_raw[0].replace(",", ""))
+            
+        interior_matches = re.findall(r'인테리어\s*비(?:용)?\s*(\d{1,3}(?:,\d{3})*)\s*만', all_text)
+        if interior_matches:
+            interior_cost = int(interior_matches[0].replace(",", "")) * 10000
+        else:
+            int_raw = re.findall(r'인테리어\s*비(?:용)?\s*(?::|은|는)?\s*(\d{1,3}(?:,\d{3})*)\s*원', all_text)
+            if int_raw:
+                interior_cost = int(int_raw[0].replace(",", ""))
+            
+        total_initial = membership_fee + deposit + interior_cost + other_cost
+        
     parsed_franchise = {
-        "brand_name": f"{query_clean} (실시간 검색 결과)",
+        "brand_name": brand_name,
         "category": category,
         "membership_fee": membership_fee,
         "deposit": deposit,
