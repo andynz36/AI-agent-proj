@@ -465,8 +465,38 @@ class PremiumContractPDF(FPDF):
         super().__init__(*args, **kwargs)
         import os
         # Register Korean font immediately during initialization
-        font_regular = "C:/Windows/Fonts/malgun.ttf"
-        font_bold = "C:/Windows/Fonts/malgunbd.ttf"
+        # Check local fonts folder first (for both Windows and Streamlit Cloud / Linux)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        font_regular = os.path.join(base_dir, "fonts", "NanumGothic-Regular.ttf")
+        font_bold = os.path.join(base_dir, "fonts", "NanumGothic-Bold.ttf")
+
+        # Fallback to Windows system font if local NanumGothic is missing and we are on Windows
+        if not os.path.exists(font_regular):
+            win_reg = "C:/Windows/Fonts/malgun.ttf"
+            win_bold = "C:/Windows/Fonts/malgunbd.ttf"
+            if os.path.exists(win_reg):
+                font_regular = win_reg
+                font_bold = win_bold if os.path.exists(win_bold) else win_reg
+            else:
+                # If neither exists, attempt dynamic download (critical for Streamlit Cloud)
+                try:
+                    import requests
+                    os.makedirs(os.path.join(base_dir, "fonts"), exist_ok=True)
+                    reg_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+                    bold_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Bold.ttf"
+
+                    r_reg = requests.get(reg_url, timeout=15)
+                    if r_reg.status_code == 200:
+                        with open(font_regular, "wb") as f:
+                            f.write(r_reg.content)
+
+                    r_bold = requests.get(bold_url, timeout=15)
+                    if r_bold.status_code == 200:
+                        with open(font_bold, "wb") as f:
+                            f.write(r_bold.content)
+                except Exception as e:
+                    pass
+
         self.add_font("Malgun", "", font_regular)
         if os.path.exists(font_bold):
             self.add_font("Malgun", "B", font_bold)
